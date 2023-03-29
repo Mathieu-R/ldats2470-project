@@ -1,0 +1,87 @@
+---
+title: "LDATS2470 - Project"
+author: "Mathieu"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(comment = "")
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r}
+# clean variables
+rm(list = ls())
+```
+
+## Loading data
+
+```{r}
+library(tidyverse)
+
+# color palettes
+library(hrbrthemes)
+library(viridis)
+
+# train-test split
+library(rsample)
+
+# tables
+library(formattable)
+library(huxtable)
+library(gt)
+
+# skewness,...
+library(moments)
+library(patchwork)
+
+# correlation
+library(corrplot)
+
+# SVM
+library(kernlab)
+```
+
+```{r}
+source("utils/plots.r")
+source("utils/tables.r")
+source("utils/misc.r")
+```
+
+```{r}
+parkinson_data <- read.csv("dataset/parkinsons.csv", sep = ",", dec = ".", header = TRUE)
+
+parkinson_data %>%
+  rename(
+    mdvp.fo = MDVP.Fo.Hz.,
+    mdvp.fhi = MDVP.Fhi.Hz.,
+    mdvp.flo = MDVP.Flo.Hz.,
+    mdvp.jitter_perc = MDVP.Jitter...,
+    mdvp.jitter_abs = MDVP.Jitter.Abs.,
+    mdvp_rap = MDVP.RAP,
+    mdvp_ppq = MDVP.PPQ,
+    jitter_ddp = Jitter.DDP,
+    mdvp.shimmer = MDVP.Shimmer,
+    mdvp.shimmer = MDVP.Shimmer.dB.,
+    mdvp_apq = MDVP.APQ,
+    shimmer_apq3 = Shimmer.APQ3,
+    shimmer_apq5 = Shimmer.APQ5,
+    shimmer_dda = Shimmer.DDA,
+    nhr = NHR,
+    hnr = HNR,
+    rpde = RPDE,
+    dfa = DFA,
+    d2 = D2,
+    ppe = PPE
+  )
+
+head(parkinson_data)
+```
+
+## Descriptive statistics
+
+```{r}
+```
