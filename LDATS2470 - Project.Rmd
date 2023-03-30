@@ -41,8 +41,15 @@ library(patchwork)
 # correlation
 library(corrplot)
 
+# modeling
+library(caret)
+
 # SVM
 library(kernlab)
+library(e1071)
+
+library(pdp)
+library(vip)
 ```
 
 ```{r}
@@ -54,34 +61,216 @@ source("utils/misc.r")
 ```{r}
 parkinson_data <- read.csv("dataset/parkinsons.csv", sep = ",", dec = ".", header = TRUE)
 
-parkinson_data %>%
+parkinson_data <- parkinson_data %>%
   rename(
     mdvp.fo = MDVP.Fo.Hz.,
     mdvp.fhi = MDVP.Fhi.Hz.,
     mdvp.flo = MDVP.Flo.Hz.,
     mdvp.jitter_perc = MDVP.Jitter...,
     mdvp.jitter_abs = MDVP.Jitter.Abs.,
-    mdvp_rap = MDVP.RAP,
-    mdvp_ppq = MDVP.PPQ,
-    jitter_ddp = Jitter.DDP,
+    mdvp.rap = MDVP.RAP,
+    mdvp.ppq = MDVP.PPQ,
+    jitter.ddp = Jitter.DDP,
     mdvp.shimmer = MDVP.Shimmer,
-    mdvp.shimmer = MDVP.Shimmer.dB.,
-    mdvp_apq = MDVP.APQ,
-    shimmer_apq3 = Shimmer.APQ3,
-    shimmer_apq5 = Shimmer.APQ5,
-    shimmer_dda = Shimmer.DDA,
+    mdvp.shimmer_db = MDVP.Shimmer.dB.,
+    mdvp.apq = MDVP.APQ,
+    shimmer.apq3 = Shimmer.APQ3,
+    shimmer.apq5 = Shimmer.APQ5,
+    shimmer.dda = Shimmer.DDA,
     nhr = NHR,
     hnr = HNR,
     rpde = RPDE,
     dfa = DFA,
     d2 = D2,
     ppe = PPE
-  )
+  ) %>%
+  mutate(status = factor(ifelse(status == "1", "parkinson", "healthy")))
 
 head(parkinson_data)
 ```
 
 ## Descriptive statistics
 
+### Response variable
 ```{r}
+table(parkinson_data$status)
+
+status_percentage <- prop.table(table(parkinson_data$status))
+status_plot <- barplot(status_percentage, col = "#3F6D9B", ylab = "Percentage", main = "Health status")
+```
+### Explanatory variables
+
+```{r out.width = 80%}
+parkinson_data %>%
+  dplyr::select_if(is.numeric) %>%
+  summary_moments %>%
+  gt %>%
+  tab_header(
+    title = "4 moments of quantitative variables"
+  )
+```
+
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, mdvp.fo), 
+  histplot(parkinson_data, mdvp.fhi),
+  histplot(parkinson_data, mdvp.flo),
+  nrow = 2, ncol = 2
+)
+```
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, mdvp.jitter_perc), 
+  histplot(parkinson_data, mdvp.jitter_abs),
+  histplot(parkinson_data, mdvp.rap),
+  histplot(parkinson_data, mdvp.ppq),
+  histplot(parkinson_data, jitter.ddp),
+  nrow = 3, ncol = 2
+)
+```
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, mdvp.apq), 
+  histplot(parkinson_data, mdvp.shimmer),
+  histplot(parkinson_data, mdvp.shimmer_db),
+  histplot(parkinson_data, shimmer.apq3),
+  histplot(parkinson_data, shimmer.apq5),
+  histplot(parkinson_data, shimmer.dda),
+  nrow = 3, ncol = 2
+)
+```
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, nhr), 
+  histplot(parkinson_data, hnr),
+  nrow = 1, ncol = 2
+)
+```
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, rpde), 
+  histplot(parkinson_data, d2),
+  nrow = 1, ncol = 2
+)
+```
+```{r}
+histplot(parkinson_data, dfa)
+```
+
+```{r}
+gridExtra::grid.arrange(
+  histplot(parkinson_data, spread1), 
+  histplot(parkinson_data, spread2),
+  histplot(parkinson_data, ppe),
+  nrow = 2, ncol = 2
+)
+```
+## SVM
+
+```{r}
+set.seed(123)
+
+split <- initial_split(parkinson_data, prop = 0.8)
+df_train <- training(split)
+df_test <- testing(split)
+
+# manage target class imbalance
+weights <- ifelse(
+  df_train$status == "parkinson", 
+  (1 / table(df_train$status)[1]) * 0.5,
+  (1 / table(df_train$status)[2]) * 0.5
+)
+
+head(df_train)
+```
+
+### Linear SVM
+
+Let's split the dataset
+
+```{r}
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+linear_svm <- train(
+  status ~ .,
+  data = df_train,
+  method = "svmLinear",
+  weights = weights,
+  preProcess = c("center", "scale"),
+  trControl = ctrl
+)
+
+confusionMatrix(linear_svm)
+```
+```{r}
+pred <- predict(linear_svm, newdata = df_test)
+confusionMatrix(pred, df_test$status)
+```
+
+### Kernel trick
+
+```{r}
+# 10-fold CV for \gamma et C parameters
+ctrl <- trainControl(
+  method = "repeatedcv", 
+  number = 5, # 5 fold cv
+  repeats = 5, # 5 repetitions of cv
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary # use AUC to pick the best model
+)
+
+kernel_svm <- train(
+  status ~ .,
+  data = df_train,
+  method = "svmRadial",
+  weights = weights,
+  preProcess = c("center", "scale"),
+  metric = "ROC",
+  trControl = ctrl,
+  tuneLength = 10
+)
+
+parkinson_svm$results
+
+ggplot(parkinson_svm) +
+  theme_minimal()
+
+confusionMatrix(kernel_svm)
+```
+```{r}
+grid <- expand.grid(
+  sigma = c(0.0020, 0.0023, 0.0025, 0.0028, 0.0030), 
+  C = c(1.5, 1.6, 1.7, 1.8, 1.9, 2, 2.1, 2.2, 2.3, 2.4, 2.5)
+)
+
+kernel_svm <- train(
+  status ~ .,
+  data = df_train,
+  method = "svmRadial",
+  preProcess = c("center", "scale"),
+  metric = "ROC",
+  trControl = ctrl,
+  tuneGrid = grid
+)
+
+kernel_svm$results
+```
+
+```{r}
+classifier <- svm(status ~ ., data = df_train, type = "C-classification", kernel = "linear", cost = 1, scale = TRUE)
+classifier
+```
+```{r}
+plot_svm <- function(x, n) {
+  
+}
+```
+```{r}
+y_pred <- predict(classifier, newdata = df_test)
 ```
