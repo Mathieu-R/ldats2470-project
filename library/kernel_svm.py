@@ -8,7 +8,7 @@ class KernelType(Enum):
 	RBF = "rbf"
 
 class SVM_SGA:
-	def __init__(self, kernel: str = "linear", C: float = 1.0, gamma: float = 1.0, learning_rate: float = 10e-3,  epochs: int = 1000) -> None:
+	def __init__(self, kernel: str = "linear", C: float = 1.0, gamma: float = 1.0, learning_rate: float = 10e-3,  epochs: int = 10000) -> None:
 		self.C = C
 		self.gamma =gamma
 
@@ -46,8 +46,6 @@ class SVM_SGA:
 		return K
 
 	def fit(self, X, y):
-		print(X)
-		print(y)
 		# n observations, p variables
 		n, p = X.shape
 
@@ -55,24 +53,8 @@ class SVM_SGA:
 		X = np.hstack((X, np.ones((len(X), 1))))
 
 		self.X = X 
-		self.y = y
-
 		# ensure target class \in {-1, 1}
-		target = np.where(y <= 0, -1, 1)
-
-		# self.w = np.zeros(n)
-		# self.b = 0
-
-		# # at each iteration
-		# for _ in range(self.epochs):
-		# 	# check if each observation is outside the margin
-		# 	for (i, Xi) in enumerate(X):
-		# 		yi = target[i]
-		# 		h = self.h(Xi)
-		# 		constraint = (yi * h) >= 1
-				
-		# 		# update with gradient descent
-		# 		self.update_params(yi, Xi, constraint)
+		self.y = np.where(y <= 0, -1, 1)
 
 		# compute kernel matrix
 		K = self.compute_kernel_matrix(X1=X, X2=X, gamma=self.gamma)
@@ -87,25 +69,25 @@ class SVM_SGA:
 		self.alphas = np.zeros((n))
 		self.bias = 0
 
-		t = 0
-
-		for _ in range(self.epochs):
-			alpha = self.alphas[t]
-			# for each observation
+		for t in range(0, self.epochs):
+			current_alphas = self.alphas.copy()
+			# update each alpha component (stochastic gradient ascent)
 			for k in range(0, n):
-				self.alphas[k] = self.alphas[k] + self.etas[k] * (1 - (y[k] * np.sum(self.alphas * y * K[:, k])))
+				current_alphas[k] = current_alphas[k] + self.etas[k] * (1 - (self.y[k] * np.sum(current_alphas * self.y * K[:, k])))
 
 				# ensure 0 <= alpha_k <= C
-				if (self.alphas[k] < 0):
-					self.alphas[k] = 0
-				elif self.alphas[k] > self.C:
-					self.alphas[k] = self.C
+				if (current_alphas[k] < 0):
+					current_alphas[k] = 0
+				elif current_alphas[k] > self.C:
+					current_alphas[k] = self.C
 
-			self.alphas[t + 1] = alpha
-			t += 1
-
-			if (self.alphas[t] - self.alphas[t - 1]) <= self.tol:
+			# break if convergence
+			if np.linalg.norm(current_alphas - self.alphas) <= self.tol:
+				print(f"converged at loop {t}")
 				break
+			
+			# update alphas
+			self.alphas = current_alphas
 
 		#self.compute_params(K)
 		self.compute_support_vectors()
@@ -116,7 +98,7 @@ class SVM_SGA:
 
 	def compute_support_vectors(self):
 		support_vectors_idx = self.alphas > self.epsilon
-		self.support_vectors = self.X[support_vectors_idx]
+		self.support_vectors = self.X[support_vectors_idx][:,:-1]
 				
 	def predict(self, X):
 		K = self.compute_kernel_matrix(X1=self.X, X2=X, gamma=self.gamma)
