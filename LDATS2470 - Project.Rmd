@@ -50,6 +50,9 @@ library(e1071)
 
 library(pdp)
 library(vip)
+
+# PCA
+library(MASS)
 ```
 
 ```{r}
@@ -276,157 +279,102 @@ y_pred <- predict(classifier, newdata = df_test)
 ```
 
 ```{r}
-rm(list = ls(all.names = TRUE))
-library(e1071)
-library(caret)
-library(ggplot2)
-library(ElemStatLearn)
-#install.packages('C:/Users/rosta/Downloads/ElemStatLearn_2015.6.26.tar', repos=NULL, type='source')
+epochs = 10000
 
-data1=read.csv("E:/UCL Courses/LDATS2470- Statistical Machine Learning and High Dimensional Data Analysis/Project/parkinsons.csv")
-sum(is.na(data1))
-data2=data1[,-c(1,18)]
-data3=data.frame(data2,data1[,18])
-colnames(data3)[23]  <- "status"
-data=data3
-dim(data)
-head(data)
-data$status <- factor(data$status, levels = c(0, 1))
-names(data)
+C = 12.0
+gamma = 0.002
 
-#drawing plot for two variables 
-plot(data[, -3],
-     main = 'Scatter Plot', col=c("red", "blue"),
-     xlab = 'data[,5]', ylab = 'data[,6]',
-     xlim = range(data[,1]), ylim = range(data[,2]))
+tol = 10e-8
+epsilon = 10e-8
 
-set.seed(123)
-trainIndex <- createDataPartition(data$status, p = 0.8, list = FALSE)
-trainData <- data[trainIndex, ]
-testData <- data[-trainIndex, ]
-dim(trainData)
-dim(testData)
-trainData[,-23]=scale(trainData[,-23])
-testData[-23]=scale(testData[,-23])
-
-# Define a range of regularization parameter values to try
-cost_range <- 10^(-3:3)
-
-# Perform cross-validation to choose the best regularization parameter
-set.seed(123)
-cv_results <- tune.svm(status ~ ., data = trainData, kernel = "radial", cost = cost_range, gamma=c(0.1, 1, 10), cross=10)
-cv_results
-
-# Get best parameters from cross-validation
-best_cost <- cv_results$best.parameters$cost
-best.gamma <- cv_results$best.parameters$gamma
-
-
-# Train SVM model with best parameters
-classifier <- svm(status ~ ., data = trainData, type = 'C-classification', kernel = "radial", cost = best_cost, gamma=best.gamma, scale=FALSE)
-#classifier <- svm(status ~ ., data = trainData, type = 'C-classification', kernel = "linear", scale=FALSE)
-
-# Make predictions on the test set
-testPred <- predict(classifier, newdata= testData[,-23])
-head(testPred)
-length(testPred)
-
-# Calculate the objective function (for soft margin case)
-obj_fun <- sum(classifier$omega^2) / 2 + sum(classifier$xi[classifier$y == 1]) + sum(classifier$xi[classifier$y == -1])
-obj_fun
-
-#confusion matrix
-cm = table(testData[,23], testPred)
-cm
-
-# Calculate the proportion of correct classifications (method 1 for calculating accuracy)
-accuracy <- mean(testPred == testData$status)
-print(paste0("Accuracy: ", round(accuracy, 2)))
-
-# To show conducting linear nonseparable SVM with RBF kernel with just two variables
-set = trainData[,c(1,2,23)]
-X1 = seq(min(set[, 1]) - 2, max(set[, 1]) + 3, by = 0.01)
-X2 = seq(min(set[, 2]) - 2, max(set[, 2]) + 4, by = 0.01)
-length(X1)
-length(X2)
-grid_set = expand.grid(X1, X2)
-dim(grid_set)
-head(grid_set)
-names(trainData)
-colnames(grid_set) = c('MDVP.Fo.Hz.', 'MDVP.Fhi.Hz.')
-classifier_grid <- svm(status ~ ., data = trainData[,c(1,2,23)], type = 'C-classification', kernel = "radial", scale=FALSE)
-y_grid = predict(classifier_grid, newdata = grid_set)
-length(y_grid)
-plot(set[, -3],
-     main = 'Kernel SVM (Training set)',
-     xlab = 'MDVP.Fo.Hz.', ylab = 'MDVP.Fhi.Hz.',
-     xlim = range(X1), ylim = range(X2))
-contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
-points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
-points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
-
-dev.off() # To remove the previous graphs
-
-################################### drawing the graph of SVM with linear kernel and with two variables #############################
-
-rm(list = ls(all.names = TRUE))
-library(e1071)
-library(caret)
-library(ggplot2)
-library(ElemStatLearn)
-
-data1=read.csv("E:/UCL Courses/LDATS2470- Statistical Machine Learning and High Dimensional Data Analysis/Project/parkinsons.csv")
-sum(is.na(data1))
-data_2=data1[,-c(1,18)]
-data2=scale(data_2)
-x=matrix(c(data2[,2], data2[,3]), ncol=2)
-y=data1$status
-x[y == 1,] = x[y == 1,] + 1
-plot(x, col = y + 3, pch = 19)
-data=data.frame(x, y = as.factor(y))
-
-set.seed(123)
-trainIndex <- createDataPartition(data$y, p = 0.8, list = FALSE)
-trainData <- data[trainIndex, ]
-testData <- data[-trainIndex, ]
-dim(trainData)
-dim(testData)
-trainData[,-3]=scale(trainData[,-3])
-testData[-3]=scale(testData[,-3])
-
-svmfit = svm(y ~ ., data = trainData, kernel = "linear", cost = 10, scale = FALSE)
-print(svmfit)
-
-plot(svmfit, data)
-
-make.grid = function(x, n = 75) {
-  grange = apply(x, 2, range)
-  x1 = seq(from = grange[1,1], to = grange[2,1], length = n)
-  x2 = seq(from = grange[1,2], to = grange[2,2], length = n)
-  expand.grid(X1 = x1, X2 = x2)
+custom_svm.rbf_kernel <- function(X_i, X_j, gamma) {
+  exp((-norm(as.matrix(X_i - X_j))^2) * gamma)
 }
 
-xgrid = make.grid(x)
+custom_svm.compute_kernel_matrix <- function(X1, X2, gamma) {
+  n <- nrow(X1)
+  m <- nrow(X2)
+  
+  K <- matrix(0, nrow = n, ncol = m)
+  
+  for (i in 1:n) {
+    for (j in 1:m) {
+      K[i, j] <- custom_svm.rbf_kernel(X1[i,], X2[j,], gamma)
+    }
+  }
+  
+  return(K)
+}
 
-ygrid = predict(svmfit, xgrid)
-plot(xgrid, col = c("red","blue")[as.numeric(ygrid)], pch = 20, cex = .2)
-points(x, col = y + 3, pch = 19)
-points(x[svmfit$index,], pch = 5, cex = 2)
+custom_svm.fit <- function(X, y) {
+  n <- nrow(X)
+  
+  X <- cbind(X, 1)
+  y <- ifelse(y == "healthy", -1, 1)
+  
+  K <- custom_svm.compute_kernel_matrix(X, X, gamma)
+  
+  etas <- rep(0, times = n)
+  
+  for (k in 1:n) {
+    etas[k] <- 1 / K[k, k]
+  }
+  
+  alphas <- rep(0, times = n)
+  
+  for (t in 1:epochs) {
+    current_alphas <- alphas
+    
+    # update each alpha component 
+    # (stochastic gradient ascent)
+    for (k in 1:n) {
+      current_alphas[k] <- current_alphas[k] + etas[k] * (1 - (y[k] * sum(current_alphas * y * K[, k])))
+      
+      # ensure 0 <= alpha_k <= C
+      if (current_alphas[k] < 0) {
+        current_alphas[k] <- 0
+      } else if (current_alphas[k] > C) {
+        current_alphas[k] <- C
+      }
+    }
+    
+    # break if convergence
+    if (norm(as.matrix(current_alphas - alphas)) <= tol) {
+      print(paste("converged at iteration:", t))
+      break
+    }
+    
+    # update alphas
+    alphas <- current_alphas
+  }
+  
+  support_vectors <- custom_svm.compute_support_vectors(X, alphas)
+  return(support_vectors)
+}
 
-beta = drop(t(svmfit$coefs)%*%x[svmfit$index,])
-beta0 = svmfit$rho
-
-plot(xgrid, col = c("red", "blue")[as.numeric(ygrid)], pch = 20, cex = .2)
-points(x, col = y + 3, pch = 19) # indicating the points of two variables
-#points(x[svmfit$index,], pch = 5, cex = 2) # indicating support vectors
-abline(beta0 / beta[2], -beta[1] / beta[2]) # hyperplane
-abline((beta0 -1) / beta[2]- 0.5, -beta[1] / beta[2], lty = 2) # lower margin (in order for the graph to be displayed clearly and not overlapped, we add (-30) ) to equation)
-abline((beta0 + 1) / beta[2]+ 0.5, -beta[1] / beta[2], lty = 2) # upper margin (in order for the graph to be displayed clearly and not overlapped, we add (-30) ) to equation)
-
-# Make predictions on the test set
-testPred <- predict(classifier, newdata= testData[,-3])
-head(testPred)
-length(testPred)
-
-dev.off() # To remove the previous graphs
+custom_svm.compute_support_vectors <- function(X, alphas) {
+  support_vectors_idx <- alphas > epsilon
+  support_vectors <- X[support_vectors_idx,][, -1]
+  return(support_vectors)
+}
 ```
+
+```{r}
+df_train <- df_train %>% dplyr::select(-name)
+df_test <- df_test %>% dplyr::select(-name)
+
+X_train <- df_train %>% dplyr::select(-status)
+y_train <- df_train %>% dplyr::select(status)
+
+X_test <- df_test %>% dplyr::select(-status)
+y_test <- df_test %>% dplyr::select(status)
+```
+
+```{r}
+X_train_pca <- PCA(X_train, ncp = 2, graph = FALSE)$ind$coord
+X_test_pca <- PCA(X_test, ncp = 2, graph = FALSE)$ind$coord
+
+support_vectors <- custom_svm.fit(X_train_pca, y_train)
+support_vectors
+```
+
