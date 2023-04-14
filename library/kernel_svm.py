@@ -14,8 +14,8 @@ class SVM_SGA:
 
 		self.learning_rate = learning_rate
 		self.epochs = epochs
-		self.tol = 10e-6
-		self.epsilon = 10e-8
+		self.tol = 1e-8
+		self.epsilon = 1e-8
 
 		self.set_kernel(kernel)
 
