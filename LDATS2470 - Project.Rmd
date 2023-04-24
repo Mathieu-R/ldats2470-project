@@ -325,7 +325,7 @@ custom_svm.fit <- function(X, y) {
   for (t in 1:epochs) {
     current_alphas <- alphas
     
-    # update each alpha component 
+    # update each alpha component
     # (stochastic gradient ascent)
     for (k in 1:n) {
       current_alphas[k] <- current_alphas[k] + etas[k] * (1 - (y[k] * sum(current_alphas * y * K[, k])))
