@@ -1,9 +1,18 @@
 \section{Introduction}
 
+Support Vector Machines (SVMs) are a popular and powerful classes of supervised learning models that are widely used in both classification and regression tasks. SVMs are based on the idea of finding the best possible decision boundary that can separate the different classes in the data. The boundary is selected such that the margin, which is the distance between the boundary and the nearest data points of each class, is maximized. 
+% NOTE: isn't it only true for the kernel trick ?
+%The main idea behind SVMs is to transform the data into a high-dimensional feature space where it is more likely to be linearly separable, and then to find the optimal hyperplane that can separate the classes in that space. 
+SVMs are particularly useful when the number of features is much larger than the number of data points, as they can efficiently deal with high-dimensional data. 
+
+In addition to the linear SVMs, there are also non-linear SVMs, which use a kernel function to implicitly map the data to a high-dimensional space where it can be linearly separated. Some popular kernel functions include the radial basis function (RBF) kernel, polynomial kernel, and sigmoid kernel.
+
+SVMs have several advantages over other classification methods. They are effective in high-dimensional spaces, have a regularizing effect, and can handle non-linear decision boundaries. SVMs also work well on both small and large datasets. However, SVMs can be sensitive to the choice of kernel function and the setting of its parameters, which can have a significant impact on the performance of the model.
+
+In this project, we want to do SVM on Parkinsons dataset. Parkinson's disease is a neurodegenerative disorder that affects movement. It is caused by the loss of dopamine-producing cells in the brain. The Parkinson's Disease Classification dataset contains 195 observations and 24 variables, including the name of the subject, the status of the subject (healthy or with Parkinson's disease), and 22 biomedical voice measurements. 
+
+The goal of doing SVM on the Parkinson's dataset is to develop a machine learning model that can accurately classify patients with Parkinson's disease from healthy individuals based on the features extracted from their voice recordings. The SVM model can be trained using the labeled data (training data) in the dataset and used to predict the presence of Parkinson's disease in new, unlabeled data (testing data).
+
+In the following, we divided our task into linear SVM, using linear kernel, and non-linear SVM that uses its own kernel which is RBF kernel. For each of them, we calculated the number of support vectors, the value of the objective function, and the proportion of correct classfications. Moreover, we visualized the results by projecting the data into the plane spanned by the first two principal components, along with its own interpretation for each part. In the end, we provided the conclusion part from whatever we reached out.
+
 The aim of this project is to analyse a range of biomedical voice measurements from 31 people where 23 of parkinson disease. There are around 6 voice measurements per patient so that in total we have a collection of 195 observations. Each one contains severall voice measures that are detailled below. The `status` column indicate is the patient has the parkinson disease or not.
-
-\section{Research question}
-
-Using support vector machine algorithms we want to discriminate the patients based on their health status.
-
-Firstly, we will begin with a basic descriptive analysis of the different variables composing this dataset. Then we will first try to perform an Hard Margin SVM. If needed, in case of the presence of outliers or a non linear dataset, we could investigate respectively the Soft Margin SVM or the use of the kernel trick.

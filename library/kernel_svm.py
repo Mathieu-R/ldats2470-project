@@ -7,7 +7,7 @@ class KernelType(Enum):
 	LINEAR = "linear"
 	RBF = "rbf"
 
-class SVM_SGA:
+class SVM_SGA_Test:
 	def __init__(self, kernel: str = "linear", C: float = 1.0, gamma: float = 1.0, learning_rate: float = 10e-3,  epochs: int = 10000) -> None:
 		self.C = C
 		self.gamma =gamma
@@ -22,8 +22,11 @@ class SVM_SGA:
 	def linear_kernel(self, X_i, X_j):
 		return np.dot(X_i.T, X_j)
 
+	def rbf_transform(self, X_i, gamma):
+		return np.exp(- gamma * (np.linalg.norm(X_i) ** 2))
+
 	def rbf_kernel(self, X_i, X_j, gamma):
-		return np.exp((- np.linalg.norm(X_i - X_j) ** 2) * gamma)
+		return np.exp((- gamma * (np.linalg.norm(X_i - X_j) ** 2)))
 
 	def set_kernel(self, kernel: str):
 		if kernel == KernelType.LINEAR.value:
@@ -32,6 +35,15 @@ class SVM_SGA:
 			self.kernel = self.rbf_kernel
 		else:
 			raise ValueError("Unsupported kernel.")
+
+	def compute_transformed_data(self, X, gamma):
+		n, p = self.X.shape
+		phi_X = np.zeros((n))
+
+		for i in range(0, n):
+			phi_X[i] = self.rbf_transform(self.X[i,:], gamma)
+		
+		return phi_X
 
 	def compute_kernel_matrix(self, X1, X2, gamma):
 		n, p = X1.shape
@@ -89,17 +101,40 @@ class SVM_SGA:
 			# update alphas
 			self.alphas = current_alphas
 
-		#self.compute_params(K)
 		self.compute_support_vectors()
-
-	def compute_params(self, K):
-		self.b = self.y - np.sum(self.alphas * self.y * K, axis=0)
-		self.w = np.sum(self.alphas * self.y * K, axis=0)
+		self.compute_params(K)
+		self.compute_decision_function(X[:,:-1])
 
 	def compute_support_vectors(self):
-		support_vectors_idx = self.alphas > self.epsilon
-		self.support_vectors = self.X[support_vectors_idx][:,:-1]
-				
-	def predict(self, X):
-		K = self.compute_kernel_matrix(X1=self.X, X2=X, gamma=self.gamma)
-		return np.sign(np.sum(self.alphas * self.y * K, axis=0) + self.b)
+		self.support_vectors_idx = self.alphas > self.epsilon
+		self.support_vectors = self.X[self.support_vectors_idx][:,:-1]
+
+	def compute_params(self, K):
+		K = self.compute_kernel_matrix(X1=self.X, X2=self.X, gamma=self.gamma)
+		self.b = self.y - np.sum((self.alphas * self.y).reshape(-1, 1) * K, axis=0)
+
+	def compute_decision_function(self, Z):
+		X = self.X[:,:-1]
+
+		n, p = X.shape
+		m, p = Z.shape
+
+		decision_function = np.zeros((m))
+		for k in range(0, m):
+			K = np.zeros((n))
+			for i in range(0, n):
+				# K(X_i, z)
+				K[i] = self.rbf_kernel(X[i,:], Z[k,:], self.gamma)
+
+			decision_function[k] = np.sum(self.alphas * self.y * K, axis=0) + np.mean(self.b)
+		
+		return decision_function
+
+	def predict(self, Z):
+		decision_function = self.compute_decision_function(Z)
+		y_pred = np.sign(decision_function)
+		return np.where(y_pred == -1, 0, 1)
+
+	def score(self, X, y):
+		y_pred = self.predict(X)
+		return np.mean(y_pred == y)
