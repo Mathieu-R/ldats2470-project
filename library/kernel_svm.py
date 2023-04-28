@@ -7,7 +7,7 @@ class KernelType(Enum):
 	LINEAR = "linear"
 	RBF = "rbf"
 
-class SVM_SGA_Test:
+class SVM_SGA:
 	def __init__(self, kernel: str = "linear", C: float = 1.0, gamma: float = 1.0, learning_rate: float = 10e-3,  epochs: int = 10000) -> None:
 		self.C = C
 		self.gamma =gamma
