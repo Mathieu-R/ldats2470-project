@@ -1,0 +1,375 @@
+---
+title: "SVM"
+author: "Mathieu"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# clean variables
+```{r}
+rm(list = ls())
+```
+
+
+```{r}
+library(tidyverse)
+# color palettes
+library(hrbrthemes)
+library(viridis)
+# train-test split
+library(rsample)
+# tables
+library(formattable)
+library(huxtable)
+library(gt)
+# skewness,...
+library(moments)
+library(patchwork)
+# correlation
+library(corrplot)
+# modeling
+library(caret)
+# SVM
+library(kernlab)
+library(e1071)
+library(pdp)
+library(vip)
+# PCA
+library(MASS)
+
+library(dplyr)
+library(magrittr)
+```
+
+
+```{r}
+parkinson_data <- read.csv("dataset/parkinsons.csv", sep = ",", dec = ".", header = TRUE)
+
+parkinson_data <- parkinson_data %>%
+  rename(
+    mdvp.fo = MDVP.Fo.Hz.,
+    mdvp.fhi = MDVP.Fhi.Hz.,
+    mdvp.flo = MDVP.Flo.Hz.,
+    mdvp.jitter_perc = MDVP.Jitter...,
+    mdvp.jitter_abs = MDVP.Jitter.Abs.,
+    mdvp.rap = MDVP.RAP,
+    mdvp.ppq = MDVP.PPQ,
+    jitter.ddp = Jitter.DDP,
+    mdvp.shimmer = MDVP.Shimmer,
+    mdvp.shimmer_db = MDVP.Shimmer.dB.,
+    mdvp.apq = MDVP.APQ,
+    shimmer.apq3 = Shimmer.APQ3,
+    shimmer.apq5 = Shimmer.APQ5,
+    shimmer.dda = Shimmer.DDA,
+    nhr = NHR,
+    hnr = HNR,
+    rpde = RPDE,
+    dfa = DFA,
+    d2 = D2,
+    ppe = PPE
+  ) %>%
+  mutate(status = factor(ifelse(status == "1", "parkinson", "healthy")))
+
+head(parkinson_data)
+```
+
+## SVM 
+
+#Let's split the dataset
+
+```{r}
+set.seed(123)
+split <- initial_split(parkinson_data, prop = 0.7)
+df_train <- training(split)
+df_trainU<-upSample (df_train, df_train$status)
+df_test <- testing(split)
+df_testU<-upSample(df_test,df_test$status)
+
+table(parkinson_data$status)
+
+table(df_train$status)
+table(df_trainU$status)
+
+table(df_test$status)
+table(df_testU$status)
+
+##### note that an additional column (25) is created with the upSample function
+##### to be removed when using upSample data sets: col 1 name + col 25 (col18 = status)
+```
+
+
+#Linear SVM with SVM function
+
+
+# Optimization of cost parameter
+
+```{r}
+cost2 <- seq(0.1,15,length=30)
+
+linear_kernel2tuneU <- tune.svm(status ~ ., data = df_trainU[,-c(1,25)], scale=TRUE, kernel='linear',  type='C-classification', cross=5, cost=cost2)                                   
+                                    
+summary(linear_kernel2tuneU)
+```
+
+# Use of optimized parameter
+
+```{r}
+linear_kernel2U <- svm(status~., data=df_trainU[,-c(1,25)], scale=TRUE, kernel='linear', type='C-classification', cost=linear_kernel2tuneU$best.parameters$cost)
+                                    
+linear_kernel2U
+```
+
+
+# predictions on upsample train_sample
+
+```{r}
+TrainResultU<-predict(linear_kernel2U, data=df_trainU[,-c(1,18,25)], scale=TRUE)
+
+confus.matrixtrainU=table(real=df_trainU$status, predict=TrainResultU)
+
+print(confus.matrixtrainU)
+
+accuracytrainU = sum(diag(confus.matrixtrainU))/sum(confus.matrixtrainU)
+
+cat("accuracy=",accuracytrainU)
+```
+
+
+# predictions on upsample test_sample
+
+```{r}
+TestResultU<-predict(linear_kernel2U, df_testU[,-c(1,18,25)], scale=TRUE)
+
+confus.matrixtestU=table(real=df_testU$status, predict=TestResultU)
+
+print (confus.matrixtestU)
+
+accuracytestU =sum(diag(confus.matrixtestU))/sum(confus.matrixtestU)
+
+cat("accuracy=",accuracytestU)
+```
+
+
+#objective function
+
+```{r}
+linear_kernel2U$index #index of sv
+linear_kernel2U$SV #SV
+linear_kernel2U$coefs 	#coeff times training labels
+
+w<- t(linear_kernel2U$coefs) %*% linear_kernel2U$SV
+b<- -linear_kernel2U$rho
+
+
+sum(linear_kernel2U$coefs)  #should be 0 cf constraint
+
+yi<- ifelse(df_trainU$status=='parkinson', 1, -1)
+
+ObjF1term <- sum(linear_kernel2U$coefs*yi[linear_kernel2U$index])
+
+ObjF2term <- w %*% t(w)
+
+ObjF <- ObjF1term - 0.5 * ObjF2term
+ 
+ObjF
+```
+
+
+### Kernel trick
+
+#Optimizationof cost and gamma parameters
+
+```{r}
+kernel_svm2U<-tune.svm(status~., data=df_trainU[,-c(1,25)], scale=TRUE, kernel='radial',  type='C-classification', cross=5, cost= c(0.5, 1, 1.5,2), gamma=c(0.1,0.2,0.3,0.4,0.5,0.7,0.9,1,1.2))                                  
+                                    
+summary(kernel_svm2U)
+
+kernel_svm2U$best.parameters
+```
+
+#Mathieu’s results for Cost and Gamma
+
+```{r}
+kernel_svmTunedU <- svm(status~., data=df_trainU[,-c(1,25)], scale=TRUE, kernel='radial',  type='C-classification', cost=0.455, gamma=0.357)
+```
+
+# predictions on upsample train_sample
+
+```{r}
+predRadialTrainU <- predict(kernel_svmTunedU, newdata=df_trainU[,-c(1,18,25)])
+
+confus.matrixtrainU=table(real=df_trainU$status, predict=predRadialTrainU)
+
+print(confus.matrixtrainU)
+
+accuracytrainU =sum(diag(confus.matrixtrainU))/sum(confus.matrixtrainU)
+
+cat("accuracy=",accuracytrainU)
+```
+
+# predictions on upsample test_sample
+
+```{r}
+predRadialTestU <- predict(kernel_svmTunedU, newdata=df_testU[,-c(1,18,25)])
+
+confus.matrixtestU=table(real=df_testU$status, predict=predRadialTestU)
+
+print(confus.matrixtestU)
+
+accuracytestU =sum(diag(confus.matrixtestU))/sum(confus.matrixtestU)
+
+cat("accuracy=",accuracytestU)
+```
+
+# Objective function
+
+```{r}
+kernel_svmTunedU $index #index of sv
+kernel_svmTunedU $SV #SV
+kernel_svmTunedU $coefs 	#coeff times training labels
+
+n=nrow(df_trainU)
+
+
+rbf_kernel <- function(x1, x2, gamma) {
+
+  return(exp(-gamma*sum(x1-x2)^2))
+
+}
+
+Xx<-cbind(df_trainU[,-c(1,18,25)],1)
+
+K <- matrix(0, n, n)
+
+for (i in 1:n) {
+
+  for (j in 1:n) {
+
+    K[i,j] <- rbf_kernel(Xx[i,], Xx[j,], 0.4)
+
+  }
+
+}
+
+
+
+
+w<- t(kernel_svmTunedU$coefs) %*% K[kernel_svmTunedU$index ,]
+b<- - kernel_svmTunedU$rho
+
+
+
+yi<- ifelse(df_trainU$status=='parkinson', 1, -1)
+
+ObjF1term <- sum(kernel_svmTunedU$coefs*yi[kernel_svmTunedU$index])
+
+ObjF2term <- w %*% t(w)
+
+ObjF <- ObjF1term - 0.5 * ObjF2term
+
+ObjF
+```
+
+# Perform PCA on data
+
+
+#PCA on test sample
+
+```{r}
+x_test<-(df_test[,-c(1,18)])
+
+x_test=as.matrix(x_test)
+
+y1<-df_test[,18]
+
+y2<-ifelse(y1=='parkinson',1, -1)
+
+y_test<-as.factor(y2)
+
+pca1 <- prcomp(x_test, center = TRUE, scale= TRUE)
+
+dim(pca1$x)
+
+pca_df1 <- as.data.frame(pca1$x[,1:2])
+
+pca_df=data.frame(pca_df1, y_test)
+
+colnames(pca_df)[3]  <- "status"
+
+dim(pca_df)
+
+y_pca=pca_df[,3]
+
+X_pca=pca_df[,c(1,2)]
+
+
+svm_modelPCA <- svm(y_pca ~ ., data = X_pca, kernel = "radial", cost = C_pca, gamma = gamma_pca, tol = tol_pca )
+
+svm_modelPCA
+
+Y_PCA<-data.frame(y_pca, X_pca)
+
+
+plot (svm_modelPCA, Y_PCA, svSymbol=5, symbolPalette = rainbow(4))
+```
+
+#PCA on upsample train data
+
+```{r}
+x_train<-(df_trainU[,-c(1,18,25)])
+
+x_train=as.matrix(x_train)
+
+y1<-df_trainU[,18]
+
+y2<-ifelse(y1=='parkinson',1, -1)
+
+y_train<-as.factor(y2)
+
+pca2 <- prcomp(x_train, center = TRUE, scale= TRUE)
+
+
+x_test<-(df_testU[,-c(1,18,25)])
+
+x_test=as.matrix(x_test)
+
+y1<-df_testU[,18]
+
+y2<-ifelse(y1=='parkinson',1, -1)
+
+y_test<-as.factor(y2)
+
+pca1 <- prcomp(x_test, center = TRUE, scale= TRUE)
+
+dim(pca1$x)
+
+pca_df1 <- as.data.frame(pca1$x[,1:2])
+
+pca_df=data.frame(pca_df1, y_test)
+
+colnames(pca_df)[3]  <- "status"
+
+dim(pca_df)
+
+y_pca=pca_df[,3]
+
+X_pca=pca_df[,c(1,2)]
+
+X_pca=scale(X_pca)
+
+#X_pca=as.matrix(X_pca)
+
+
+svm_modelPCA <- svm(y_pca ~ ., data = X_pca, kernel = "radial", cost = C_pca, gamma = gamma_pca, tol = tol_pca )
+
+svm_modelPCA
+
+Y_PCA<-data.frame(y_pca, X_pca)
+
+
+plot (svm_modelPCA, Y_PCA, svSymbol=5, symbolPalette = rainbow(4))
+```
